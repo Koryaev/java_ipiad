@@ -11,10 +11,12 @@ import java.nio.charset.StandardCharsets;
 import java.util.concurrent.TimeoutException;
 
 public class NewsParser implements Runnable {
-    private Channel channel;
+    private Channel linksChannel;
+    private Channel parsedDataChannel;
     private Connection conn;
 
-    private final String exchangeName = "ProducerLinks";
+    private final String linksExchangeName = "ProducerLinks";
+    private final String parsedDataExchangeName = "ParsedData";
     private final String tag = "NewsParserTag";
 
     @Override
@@ -30,6 +32,12 @@ public class NewsParser implements Runnable {
            throw new RuntimeException(e);
 
        }
+    }
+
+    public void finish() throws IOException, TimeoutException {
+        linksChannel.close();
+        parsedDataChannel.close();
+        conn.close();
     }
 
     private void parse_news(String url) throws IOException{
@@ -51,12 +59,16 @@ public class NewsParser implements Runnable {
         newsData.setTime(rubrics.select("p").text());
 
 //        newsData.printData();
-        System.out.println("<" + Thread.currentThread().getName() + "> " + newsData.toString());
+//        System.out.println("<" + Thread.currentThread().getName() + "> " + newsData.toString());
+
+
+        parsedDataChannel.basicPublish("", parsedDataExchangeName, null, newsData.toStrJson().getBytes());
+
     }
 
     private void handle_records() throws IOException {
-        channel.basicConsume(exchangeName, false, tag,
-                new DefaultConsumer(channel) {
+        linksChannel.basicConsume(linksExchangeName, false, tag,
+                new DefaultConsumer(linksChannel) {
                     @Override
                     public void handleDelivery(String consumerTag,
                                                Envelope envelope,
@@ -70,9 +82,8 @@ public class NewsParser implements Runnable {
 
                         String message = new String(body, StandardCharsets.UTF_8);
                         parse_news(message);
-//                        System.out.println(" [x] Received '" + message + "'" + "  " + Thread.currentThread());
 
-                        channel.basicAck(deliveryTag, false);
+                        linksChannel.basicAck(deliveryTag, false);
                     }
                 });
     }
@@ -85,16 +96,25 @@ public class NewsParser implements Runnable {
         factory.setHost("127.0.0.1");
         factory.setPort(5672);
         conn = factory.newConnection();
-        channel = conn.createChannel();
-        String exchangeName = "ProducerLinks";
 
-        channel.queueDeclare(  // create queue
-                exchangeName,
+        linksChannel = conn.createChannel();
+        linksChannel.queueDeclare(  // create queue
+                linksExchangeName,
                 true,      // durable
                 false,        // exclusive
                 false,        // autoDelete
                 null          // arguments
         );
-        channel.basicQos(1);  // the number of messages that can be processed at the same time
+        linksChannel.basicQos(1);  // the number of messages that can be processed at the same time
+
+        parsedDataChannel = conn.createChannel();
+        parsedDataChannel.queueDeclare(  // create queue
+                parsedDataExchangeName,
+                true,      // durable
+                false,        // exclusive
+                false,        // autoDelete
+                null          // arguments
+        );
+        parsedDataChannel.basicQos(1);  // the number of messages that can be processed at the same time
     }
 }
