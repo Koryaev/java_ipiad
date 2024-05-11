@@ -3,12 +3,14 @@ package runnables;
 import com.rabbitmq.client.Channel;
 import com.rabbitmq.client.Connection;
 import com.rabbitmq.client.ConnectionFactory;
+import dataClasses.UrlData;
 import org.jsoup.nodes.Document;
 import org.jsoup.nodes.Element;
 import org.jsoup.select.Elements;
 import utils.RequestUtils;
 
 import java.io.IOException;
+import java.security.NoSuchAlgorithmException;
 import java.util.concurrent.TimeoutException;
 
 
@@ -26,12 +28,12 @@ public class MainPageLinkFetcher implements Runnable{
         try {
             Document doc = RequestUtils.makeGetRequest(startUrl);
             parseMainLinkBody(doc);
-        } catch (IOException | TimeoutException e) {
+        } catch (IOException | TimeoutException | NoSuchAlgorithmException e) {
             throw new RuntimeException(e);
         }
     }
 
-    public static void parseMainLinkBody(Document doc) throws IOException, TimeoutException {
+    public static void parseMainLinkBody(Document doc) throws IOException, TimeoutException, NoSuchAlgorithmException {
         ConnectionFactory factory = new ConnectionFactory();
         factory.setUsername("rabbitmq");
         factory.setPassword("rabbitmq");
@@ -60,6 +62,7 @@ public class MainPageLinkFetcher implements Runnable{
 
         for (Element current_li: li) {
             String path = current_li.select("a[href]").attr("href");
+            String title = current_li.select("a[href]").text();
             String url = baseUrl + path;
             System.out.println(url);
 
@@ -67,20 +70,21 @@ public class MainPageLinkFetcher implements Runnable{
                 continue;
             }
 
+            UrlData urlData = new UrlData();
+            urlData.setUrl(url);
+            urlData.setTitle(title);
+            urlData.createHash();
+
             try {
-                channel.basicPublish("", exchangeName, null, url.getBytes());
-//                Document news_doc = makeGetRequest(url);
-//                parseNews(news_doc, url);
+                channel.basicPublish("", exchangeName, null, urlData.toStrJson().getBytes());
             } catch (IOException e) {
                 channel.close();
                 conn.close();
                 throw new RuntimeException(e);
             }
 
-//            break;
         }
         channel.close();
         conn.close();
-
     }
 }

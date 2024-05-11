@@ -2,6 +2,7 @@ package runnables;
 
 import com.rabbitmq.client.*;
 import dataClasses.NewsData;
+import dataClasses.UrlData;
 import org.jsoup.nodes.Document;
 import org.jsoup.nodes.Element;
 import utils.RequestUtils;
@@ -26,8 +27,6 @@ public class NewsParser implements Runnable {
            create_connection();
            handle_records();
 
-//           channel.close();
-//           conn.close();
        } catch (IOException | TimeoutException e) {
            throw new RuntimeException(e);
 
@@ -40,7 +39,12 @@ public class NewsParser implements Runnable {
         conn.close();
     }
 
-    private void parse_news(String url) throws IOException{
+    private void parse_news(String strJson) throws IOException{
+        UrlData urlData = new UrlData();
+        urlData.fromStrJson(strJson);
+
+        String url = urlData.getUrl();
+
         Document doc = RequestUtils.makeGetRequest(url);
 
         String baseUrl = "https://www.m24.ru";
@@ -68,24 +72,36 @@ public class NewsParser implements Runnable {
 
     private void handle_records() throws IOException {
         linksChannel.basicConsume(linksExchangeName, false, tag,
-                new DefaultConsumer(linksChannel) {
-                    @Override
-                    public void handleDelivery(String consumerTag,
-                                               Envelope envelope,
-                                               AMQP.BasicProperties properties,
-                                               byte[] body)
-                            throws IOException
-                    {
-                        String routingKey = envelope.getRoutingKey();
-                        String contentType = properties.getContentType();
-                        long deliveryTag = envelope.getDeliveryTag();
+            new DefaultConsumer(linksChannel) {
+                @Override
+                public void handleDelivery(String consumerTag, Envelope envelope,
+                                           AMQP.BasicProperties properties, byte[] body) throws IOException {
+                    String routingKey = envelope.getRoutingKey();
+                    String contentType = properties.getContentType();
+                    long deliveryTag = envelope.getDeliveryTag();
 
-                        String message = new String(body, StandardCharsets.UTF_8);
-                        parse_news(message);
+                    String message = new String(body, StandardCharsets.UTF_8);
+                    parse_news(message);
 
-                        linksChannel.basicAck(deliveryTag, false);
-                    }
-                });
+                    linksChannel.basicAck(deliveryTag, false);
+                }
+            });
+
+        parsedDataChannel.basicConsume(parsedDataExchangeName, false, tag,
+            new DefaultConsumer(parsedDataChannel) {
+                @Override
+                public void handleDelivery(String consumerTag, Envelope envelope,
+                                           AMQP.BasicProperties properties, byte[] body) throws IOException {
+                    String routingKey = envelope.getRoutingKey();
+                    String contentType = properties.getContentType();
+                    long deliveryTag = envelope.getDeliveryTag();
+
+                    String message = new String(body, StandardCharsets.UTF_8);
+                    System.out.println(message);
+
+                    parsedDataChannel.basicAck(deliveryTag, false);
+                }
+            });
     }
 
     private void create_connection() throws TimeoutException, IOException {

@@ -4,11 +4,9 @@ import java.util.Objects;
 import java.util.concurrent.TimeoutException;
 import java.util.Scanner;
 
-import dataClasses.NewsData;
-
 import org.jsoup.nodes.Document;
-import org.jsoup.nodes.Element;
 
+import runnables.ElasticWorker;
 import runnables.MainPageLinkFetcher;
 import runnables.NewsParser;
 
@@ -31,6 +29,10 @@ public class Main {
 //        MainPageLinkFetcher main_page_fetcher = new MainPageLinkFetcher(base_url);
 //        Thread t1 = new Thread(main_page_fetcher);
 //        t1.start();
+
+//        ElasticWorker Elastic = new ElasticWorker();
+//        Elastic.createIndex("test");
+
 
         NewsParser news_parser = new NewsParser();
         news_parser_thread = new Thread(news_parser);
