@@ -12,6 +12,9 @@ import utils.RequestUtils;
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.util.concurrent.TimeoutException;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+import utils.Settings;
 
 public class NewsParser implements Runnable {
     private Channel linksChannel;
@@ -24,24 +27,37 @@ public class NewsParser implements Runnable {
     private final String parsedDataExchangeName = "ParsedData";
     private final String tag = "NewsParserTag";
 
-    public NewsParser(ElasticWorker esClient) {
+    private static final Logger logger = LoggerFactory.getLogger(NewsParser.class);
+    private Settings settings;
+
+    public NewsParser(ElasticWorker esClient, Settings set) {
         esWorker = esClient;
+        settings = set;
+
+        try {
+            create_connection();
+        } catch (TimeoutException | IOException ex) {
+            logger.error("Can not connect to rabbit:" + ex.getMessage());
+            System.exit(1);
+        }
+
     }
 
     @Override
     public void run() {
-        System.out.println(Thread.currentThread().getName() + "started");
+        logger.info("News parser starts!");
        try {
-           create_connection();
+//           create_connection();
            handle_records();
 
-       } catch (IOException | TimeoutException e) {
+       } catch (IOException e) {
            throw new RuntimeException(e);
 
        }
     }
 
     public void finish() throws IOException, TimeoutException {
+        logger.info("News parser finish");
         linksChannel.close();
         parsedDataChannel.close();
         conn.close();
@@ -54,6 +70,8 @@ public class NewsParser implements Runnable {
         boolean hashInEs = esWorker.check_existence(urlData);
         // if hash in elastic -> scip
         if (hashInEs) {
+            synchronized (this) { settings.decrementCount(); }
+            logger.info("URL <" + urlData.getUrl() + "> was founded in ES, Scip! Hash <" + urlData.getHash() + ">");
             return;
         }
 
@@ -88,9 +106,8 @@ public class NewsParser implements Runnable {
         }
 
         newsData.setBody(body.toString());
-
+        synchronized (this) { settings.decrementCount(); }
         parsedDataChannel.basicPublish("", parsedDataExchangeName, null, newsData.toStrJson().getBytes());
-
     }
 
     private void handle_records() throws IOException {
@@ -155,11 +172,23 @@ public class NewsParser implements Runnable {
                 null          // arguments
         );
         parsedDataChannel.basicQos(1);  // the number of messages that can be processed at the same time
+        logger.info("RabbitMQ was connected");
     }
 
     private void process_and_sent_to_es(String message) throws JsonProcessingException {
         NewsData newsData = new NewsData();
         newsData.fromStrJson(message);
         esWorker.insert_data(newsData);
+    }
+
+    public void get_mes_count() {
+        try {
+            AMQP.Queue.DeclareOk links_response = linksChannel.queueDeclarePassive(linksExchangeName);
+            settings.setMessageCount(links_response.getMessageCount());
+            logger.info(links_response.getMessageCount() + " links was in Rabbit before start");
+        } catch (IOException ex) {
+            logger.error("Can not get message count: " + ex.getMessage());
+            System.exit(1);
+        }
     }
 }

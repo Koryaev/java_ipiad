@@ -8,11 +8,16 @@ import co.elastic.clients.json.jackson.JacksonJsonpMapper;
 import co.elastic.clients.transport.ElasticsearchTransport;
 import co.elastic.clients.transport.endpoints.BooleanResponse;
 import co.elastic.clients.transport.rest_client.RestClientTransport;
+import com.fasterxml.jackson.databind.ObjectMapper;
+import com.fasterxml.jackson.databind.json.JsonMapper;
+import com.fasterxml.jackson.datatype.jsr310.JavaTimeModule;
 import dataClasses.NewsData;
 import dataClasses.UrlData;
 import org.elasticsearch.client.RestClient;
 
 import org.apache.http.HttpHost;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 import java.io.IOException;
 
@@ -24,6 +29,7 @@ public class ElasticWorker {
     private ElasticsearchTransport EsTransport;
 
     private final String index_name;
+    private static final Logger logger = LoggerFactory.getLogger(ElasticWorker.class);
 
     public ElasticWorker(String name) {
        index_name = name;
@@ -36,8 +42,13 @@ public class ElasticWorker {
 //                })
                 .build();
 
-        EsTransport = new RestClientTransport(EsRestClient, new JacksonJsonpMapper());
+        ObjectMapper mapper = JsonMapper.builder()
+                .addModule(new JavaTimeModule())
+                .build();
+
+        EsTransport = new RestClientTransport(EsRestClient, new JacksonJsonpMapper(mapper));
         EsClient = new ElasticsearchClient(EsTransport);
+        logger.info("Elastic was connected");
     }
 
     public void createIndex() throws IOException {
@@ -45,6 +56,7 @@ public class ElasticWorker {
 
 
         if (index_exists.value()) {
+            logger.info("Index '" + index_name + "' already exists");
 //            EsClient.indices().delete(d -> d
 //                    .index(index_name)
 //            );
@@ -60,6 +72,7 @@ public class ElasticWorker {
                 .properties("time", p -> p.text(d -> d.fielddata(true)))
                 .properties("rubric_url", p -> p.text(d -> d.fielddata(true)))
         ));
+        logger.info("Index '" + index_name + "' was created!");
     }
 
     public void insert_data(NewsData data) {
@@ -70,16 +83,15 @@ public class ElasticWorker {
                     .document(data)
             );
         } catch (IOException ex) {
-            System.out.println("Error with inserting data to elastic <" + data.getUrl() + ">");
-            System.out.println(ex.getMessage());
+            logger.error("Error with inserting data to elastic <" + data.getUrl() + ">");
+            logger.error(ex.getMessage());
             return;
         }
-
-        System.out.println(response.result().jsonValue());
+        logger.info("<" + data.getUrl() + "> was added to ES");
     }
 
     public boolean check_existence(UrlData data) {
-        SearchResponse<UrlData> response = null;
+        SearchResponse<NewsData> response = null;
         String hash = data.getHash();
         try {
             response = EsClient.search(s -> s
@@ -90,10 +102,10 @@ public class ElasticWorker {
                                             .query(hash)
                                     )
                             ),
-                    UrlData.class
+                    NewsData.class
             );
         } catch (ElasticsearchException | IOException ex) {
-            System.out.println(ex.getMessage());
+            logger.error("Error with check existence for <" + data.getUrl() + ">");
             System.exit(1);
         }
         return response.hits().total().value() != 0;

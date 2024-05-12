@@ -7,7 +7,10 @@ import dataClasses.UrlData;
 import org.jsoup.nodes.Document;
 import org.jsoup.nodes.Element;
 import org.jsoup.select.Elements;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import utils.RequestUtils;
+import utils.Settings;
 
 import java.io.IOException;
 import java.security.NoSuchAlgorithmException;
@@ -17,14 +20,17 @@ import java.util.concurrent.TimeoutException;
 public class MainPageLinkFetcher implements Runnable{
 
     private final String startUrl;
+    private Settings settings;
 
-    public MainPageLinkFetcher(String startUrl) {
+    public MainPageLinkFetcher(String startUrl, Settings sett) {
         this.startUrl = startUrl;
+        this.settings = sett;
     }
+    private static final Logger logger = LoggerFactory.getLogger(MainPageLinkFetcher.class);
 
     @Override
     public void run() {
-        System.out.println(Thread.currentThread().getName() + "started");
+        logger.info("Main page fetcher starts");
         try {
             Document doc = RequestUtils.makeGetRequest(startUrl);
             parseMainLinkBody(doc);
@@ -33,7 +39,7 @@ public class MainPageLinkFetcher implements Runnable{
         }
     }
 
-    public static void parseMainLinkBody(Document doc) throws IOException, TimeoutException, NoSuchAlgorithmException {
+    public void parseMainLinkBody(Document doc) throws IOException, TimeoutException, NoSuchAlgorithmException {
         ConnectionFactory factory = new ConnectionFactory();
         factory.setUsername("rabbitmq");
         factory.setPassword("rabbitmq");
@@ -64,7 +70,7 @@ public class MainPageLinkFetcher implements Runnable{
             String path = current_li.select("a[href]").attr("href");
             String title = current_li.select("a[href]").text();
             String url = baseUrl + path;
-            System.out.println(url);
+            logger.info("url was founded <" + url + ">");
 
             if (!path.startsWith("/news")) {
                 continue;
@@ -82,6 +88,7 @@ public class MainPageLinkFetcher implements Runnable{
                 conn.close();
                 throw new RuntimeException(e);
             }
+            synchronized (this) { settings.incrementCount(); }
 
         }
         channel.close();

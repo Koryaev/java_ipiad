@@ -1,0 +1,36 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<Configuration status="INFO">
+    <Appenders>
+        <!-- Console appender configuration -->
+        <Console name="Console" target="SYSTEM_OUT">
+            <PatternLayout pattern="%d{yyyy-MM-dd'T'HH:mm:ss.SSSSSSSSS'Z'} {%t} %-5p %c:%L - %m%n"/>
+        </Console>
+
+        <!--
+        t - thread name
+        p - log level;
+        c - category
+        x -
+        m - message
+        n - \n
+        -->
+
+        <!-- File appender configuration-->
+        <RollingFile name="File" fileName="/Users/mihailkoraev/Documents/study/4_kurs/java_labs/fetcher/log/log.log"
+                     filePattern="/Users/mihailkoraev/Documents/study/4_kurs/java_labs/fetcher/log/log-%i.log">
+            <PatternLayout pattern="%d{yyyy-MM-dd'T'HH:mm:ss.SSSSSSSSS'Z'} {%t} %-5p %c:%L  - %m%n"/>
+            <Policies>
+                <SizeBasedTriggeringPolicy size="10MB"/>
+            </Policies>
+            <DefaultRolloverStrategy max="5"/>
+        </RollingFile>
+    </Appenders>
+
+    <Loggers>
+        <!-- Root logger configuration -->
+        <Root level="DEBUG">
+            <AppenderRef ref="Console"/>
+            <AppenderRef ref="File"/>
+        </Root>
+    </Loggers>
+</Configuration>
