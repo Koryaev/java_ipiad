@@ -1,16 +1,18 @@
 package dataClasses;
 
 import com.fasterxml.jackson.core.JsonProcessingException;
+import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.ObjectWriter;
 
 public class NewsData {
     private String url;
     private String body;
-    private String header;
+    private String title;
     private String rubric;
     private String rubric_url;
     private String time;
+    private String hash;
 
     public String getUrl() {
         return url;
@@ -28,12 +30,12 @@ public class NewsData {
         this.body = body;
     }
 
-    public String getHeader() {
-        return header;
+    public String getTitle() {
+        return title;
     }
 
-    public void setHeader(String header) {
-        this.header = header;
+    public void setTitle(String title) {
+        this.title = title;
     }
 
     public String getRubric() {
@@ -60,17 +62,19 @@ public class NewsData {
         this.time = time;
     }
 
-    public void printData() {
-        String text = String.format("Time: %s | URL: %s\nRubric: %s\nHeader: %s",
-                this.time, this.url, this.rubric, this.header);
-        System.out.println(text);
+    public String getHash() {
+        return hash;
+    }
+
+    public void setHash(String hash) {
+        this.hash = hash;
     }
 
     @Override
     public String toString() {
         return "NewsData{" +
                 "url='" + url + '\'' +
-                ", header='" + header + '\'' +
+                ", title='" + title + '\'' +
                 ", rubric='" + rubric + '\'' +
                 ", rubric_url='" + rubric_url + '\'' +
                 ", time='" + time + '\'' +
@@ -80,5 +84,18 @@ public class NewsData {
     public String toStrJson() throws JsonProcessingException {
         ObjectWriter ow = new ObjectMapper().writer().withDefaultPrettyPrinter();
         return ow.writeValueAsString(this);
+    }
+
+    public void fromStrJson(String strJson) throws JsonProcessingException {
+        ObjectMapper mapper = new ObjectMapper();
+        JsonNode node = mapper.readTree(strJson);
+
+        this.url = node.get("url").asText();
+        this.body = node.get("body").asText();
+        this.title = node.get("title").asText();
+        this.rubric = node.get("rubric").asText();
+        this.rubric_url = node.get("rubric_url").asText();
+        this.time = node.get("time").asText();
+        this.hash = node.get("hash").asText();
     }
 }

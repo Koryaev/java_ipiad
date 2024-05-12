@@ -1,17 +1,13 @@
 import java.io.IOException;
-import java.util.Map;
 import java.util.Objects;
 import java.util.concurrent.TimeoutException;
 import java.util.Scanner;
-
-import org.jsoup.nodes.Document;
 
 import runnables.ElasticWorker;
 import runnables.MainPageLinkFetcher;
 import runnables.NewsParser;
 
 public class Main {
-    private static Map<String, Document> responsesMap;
     private final static String base_url = "https://www.m24.ru";
 
     private Thread start_thread;
@@ -26,15 +22,10 @@ public class Main {
     }
 
     public void start() throws IOException, TimeoutException {
-//        MainPageLinkFetcher main_page_fetcher = new MainPageLinkFetcher(base_url);
-//        Thread t1 = new Thread(main_page_fetcher);
-//        t1.start();
+        ElasticWorker Elastic = new ElasticWorker("news");
+        Elastic.createIndex();
 
-//        ElasticWorker Elastic = new ElasticWorker();
-//        Elastic.createIndex("test");
-
-
-        NewsParser news_parser = new NewsParser();
+        NewsParser news_parser = new NewsParser(Elastic);
         news_parser_thread = new Thread(news_parser);
         news_parser_thread.start();
 

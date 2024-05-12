@@ -1,10 +1,12 @@
 package runnables;
 
+import com.fasterxml.jackson.core.JsonProcessingException;
 import com.rabbitmq.client.*;
 import dataClasses.NewsData;
 import dataClasses.UrlData;
 import org.jsoup.nodes.Document;
 import org.jsoup.nodes.Element;
+import org.jsoup.select.Elements;
 import utils.RequestUtils;
 
 import java.io.IOException;
@@ -16,9 +18,15 @@ public class NewsParser implements Runnable {
     private Channel parsedDataChannel;
     private Connection conn;
 
+    private ElasticWorker esWorker;
+
     private final String linksExchangeName = "ProducerLinks";
     private final String parsedDataExchangeName = "ParsedData";
     private final String tag = "NewsParserTag";
+
+    public NewsParser(ElasticWorker esClient) {
+        esWorker = esClient;
+    }
 
     @Override
     public void run() {
@@ -43,17 +51,23 @@ public class NewsParser implements Runnable {
         UrlData urlData = new UrlData();
         urlData.fromStrJson(strJson);
 
-        String url = urlData.getUrl();
+        boolean hashInEs = esWorker.check_existence(urlData);
+        // if hash in elastic -> scip
+        if (hashInEs) {
+            return;
+        }
 
+        String url = urlData.getUrl();
         Document doc = RequestUtils.makeGetRequest(url);
 
         String baseUrl = "https://www.m24.ru";
         NewsData newsData = new NewsData();
         newsData.setUrl(url);
+        newsData.setHash(urlData.getHash());
 
         Element header_div = doc.selectFirst("div.b-material-before-body");
 
-        newsData.setHeader(header_div.select("h1").text());
+        newsData.setTitle(header_div.select("h1").text());
 
         Element rubrics = header_div.selectFirst("div.b-material__rubrics");
 
@@ -62,9 +76,18 @@ public class NewsParser implements Runnable {
 
         newsData.setTime(rubrics.select("p").text());
 
-//        newsData.printData();
-//        System.out.println("<" + Thread.currentThread().getName() + "> " + newsData.toString());
+        Element body_div = doc.selectFirst("div.b-material-body");
+        Elements paragraphs = body_div.select("p:not([class])");
 
+        StringBuilder body = new StringBuilder();
+
+        for (Element current_paragraph: paragraphs) {
+            if (!current_paragraph.text().isEmpty()) {
+                body.append(current_paragraph.text()).append("\n");
+            }
+        }
+
+        newsData.setBody(body.toString());
 
         parsedDataChannel.basicPublish("", parsedDataExchangeName, null, newsData.toStrJson().getBytes());
 
@@ -97,7 +120,7 @@ public class NewsParser implements Runnable {
                     long deliveryTag = envelope.getDeliveryTag();
 
                     String message = new String(body, StandardCharsets.UTF_8);
-                    System.out.println(message);
+                    process_and_sent_to_es(message);
 
                     parsedDataChannel.basicAck(deliveryTag, false);
                 }
@@ -132,5 +155,11 @@ public class NewsParser implements Runnable {
                 null          // arguments
         );
         parsedDataChannel.basicQos(1);  // the number of messages that can be processed at the same time
+    }
+
+    private void process_and_sent_to_es(String message) throws JsonProcessingException {
+        NewsData newsData = new NewsData();
+        newsData.fromStrJson(message);
+        esWorker.insert_data(newsData);
     }
 }
