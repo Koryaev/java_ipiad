@@ -45,18 +45,15 @@ public class MainPageLinkFetcher implements Runnable{
 
     public void parseMainLinkBody(Document doc) throws IOException, TimeoutException, NoSuchAlgorithmException {
         ConnectionFactory factory = new ConnectionFactory();
-        factory.setUsername("rabbitmq");
-        factory.setPassword("rabbitmq");
-//        factory.setVirtualHost("/");
-        factory.setHost("127.0.0.1");
-        factory.setPort(5672);
+        factory.setUsername(settings.getRabbitName());
+        factory.setPassword(settings.getRabbitPassword());
+        factory.setHost(settings.getRabbitHost());
+        factory.setPort(settings.getRabbitPort());
         Connection conn = factory.newConnection();
         Channel channel = conn.createChannel();
-        String exchangeName = "ProducerLinks";
-//        String routingKey = "testRoute";
 
         channel.queueDeclare(  // create queue
-                exchangeName,
+                settings.getLinksExchangeName(),
                 true,      // durable
                 false,        // exclusive
                 false,        // autoDelete
@@ -65,15 +62,13 @@ public class MainPageLinkFetcher implements Runnable{
 
         channel.basicQos(1);  // the number of messages that can be processed at the same time
 
-        String baseUrl = "https://www.m24.ru";
-
         Elements ul = doc.select("div.b-sidebar-news-list > ul");
         Elements li = ul.select("li"); // select all li from ul
 
         for (Element current_li: li) {
             String path = current_li.select("a[href]").attr("href");
             String title = current_li.select("a[href]").text();
-            String url = baseUrl + path;
+            String url = settings.getURL() + path;
             logger.info("url was founded <" + url + ">");
 
             if (!path.startsWith("/news")) {
@@ -86,7 +81,8 @@ public class MainPageLinkFetcher implements Runnable{
             urlData.createHash();
 
             try {
-                channel.basicPublish("", exchangeName, null, urlData.toStrJson().getBytes());
+                channel.basicPublish("", settings.getLinksExchangeName(),
+                        null, urlData.toStrJson().getBytes());
             } catch (IOException e) {
                 channel.close();
                 conn.close();
