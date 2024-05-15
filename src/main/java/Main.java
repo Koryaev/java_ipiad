@@ -6,19 +6,20 @@ import java.util.Scanner;
 import runnables.ElasticWorker;
 import runnables.MainPageLinkFetcher;
 import runnables.NewsParser;
+import utils.RequestUtils;
 import utils.Settings;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 public class Main {
-    private final static String base_url = "https://www.m24.ru";
-
     private Thread start_thread;
-    private Thread news_parser_thread;
+    private Thread news_parser_thread_first;
+    private Thread news_parser_thread_second;
     private MainPageLinkFetcher main_page_fetcher;
     private static final Logger logger = LoggerFactory.getLogger(Main.class);
-    private Settings settings = new Settings();
+    private final Settings settings = new Settings();
+    private final RequestUtils requestUtils = new RequestUtils(settings);
 
     public static void main(String[] args) throws IOException, TimeoutException, InterruptedException {
         logger.info("Program starts!");
@@ -27,15 +28,21 @@ public class Main {
     }
 
     public void start() throws IOException, TimeoutException, InterruptedException {
-        ElasticWorker Elastic = new ElasticWorker("news");
+        ElasticWorker Elastic = new ElasticWorker(settings);
         Elastic.createIndex();
 
-        NewsParser news_parser = new NewsParser(Elastic, settings);
-        news_parser.get_mes_count();
-        news_parser_thread = new Thread(news_parser);
-        news_parser_thread.start();
+        NewsParser news_parser_first = new NewsParser(Elastic, settings, requestUtils);
+        NewsParser news_parser_second = new NewsParser(Elastic, settings, requestUtils);
 
-        int currentMesCount = 0;
+        news_parser_first.get_mes_count();  // get mes count in RabbitMQ query if they exists
+
+        news_parser_thread_first = new Thread(news_parser_first);
+        news_parser_thread_second = new Thread(news_parser_second);
+
+        news_parser_thread_first.start();
+        news_parser_thread_second.start();
+
+        int currentMesCount;
 
         while (true) {
             synchronized (this) { currentMesCount = settings.getMessageCount(); }
@@ -49,12 +56,13 @@ public class Main {
             boolean needToParseMainPage = askUser();
 
             if (needToParseMainPage) {
-                main_page_fetcher = new MainPageLinkFetcher(base_url, settings);
+                main_page_fetcher = new MainPageLinkFetcher(settings, requestUtils);
                 start_thread = new Thread(main_page_fetcher);
                 start_thread.start();
-                Thread.sleep(1000);
+                Thread.sleep(5000);
             } else {
-                news_parser.finish();
+                news_parser_first.finish();
+                news_parser_second.finish();
                 System.exit(0);
             }
         }

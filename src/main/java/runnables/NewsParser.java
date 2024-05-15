@@ -20,19 +20,15 @@ public class NewsParser implements Runnable {
     private Channel linksChannel;
     private Channel parsedDataChannel;
     private Connection conn;
-
-    private ElasticWorker esWorker;
-
-    private final String linksExchangeName = "ProducerLinks";
-    private final String parsedDataExchangeName = "ParsedData";
-    private final String tag = "NewsParserTag";
-
+    private final ElasticWorker esWorker;
     private static final Logger logger = LoggerFactory.getLogger(NewsParser.class);
-    private Settings settings;
+    private final Settings settings;
+    private final RequestUtils requestUtils;
 
-    public NewsParser(ElasticWorker esClient, Settings set) {
+    public NewsParser(ElasticWorker esClient, Settings set, RequestUtils reqUtil) {
         esWorker = esClient;
         settings = set;
+        requestUtils = reqUtil;
 
         try {
             create_connection();
@@ -40,19 +36,15 @@ public class NewsParser implements Runnable {
             logger.error("Can not connect to rabbit:" + ex.getMessage());
             System.exit(1);
         }
-
     }
 
     @Override
     public void run() {
         logger.info("News parser starts!");
        try {
-//           create_connection();
            handle_records();
-
        } catch (IOException e) {
            throw new RuntimeException(e);
-
        }
     }
 
@@ -76,9 +68,14 @@ public class NewsParser implements Runnable {
         }
 
         String url = urlData.getUrl();
-        Document doc = RequestUtils.makeGetRequest(url);
+        Document doc = requestUtils.makeGetRequest(url);
 
-        String baseUrl = "https://www.m24.ru";
+        if (doc == null) {
+            synchronized (this) { settings.decrementCount(); }
+            logger.info("URL <" + urlData.getUrl() + "> request had error, Scip! Hash <" + urlData.getHash() + ">");
+            return;
+        }
+
         NewsData newsData = new NewsData();
         newsData.setUrl(url);
         newsData.setHash(urlData.getHash());
@@ -90,7 +87,7 @@ public class NewsParser implements Runnable {
         Element rubrics = header_div.selectFirst("div.b-material__rubrics");
 
         newsData.setRubric(rubrics.select("a").text());
-        newsData.setRubric_url(baseUrl + rubrics.select("a").attr("href"));
+        newsData.setRubric_url(settings.getURL() + rubrics.select("a").attr("href"));
 
         newsData.setTime(rubrics.select("p").text());
 
@@ -107,17 +104,16 @@ public class NewsParser implements Runnable {
 
         newsData.setBody(body.toString());
         synchronized (this) { settings.decrementCount(); }
-        parsedDataChannel.basicPublish("", parsedDataExchangeName, null, newsData.toStrJson().getBytes());
+        parsedDataChannel.basicPublish("", settings.getParsedDataExchangeName(),
+                null, newsData.toStrJson().getBytes());
     }
 
     private void handle_records() throws IOException {
-        linksChannel.basicConsume(linksExchangeName, false, tag,
+        linksChannel.basicConsume(settings.getLinksExchangeName(), false, settings.getTag(),
             new DefaultConsumer(linksChannel) {
                 @Override
                 public void handleDelivery(String consumerTag, Envelope envelope,
                                            AMQP.BasicProperties properties, byte[] body) throws IOException {
-                    String routingKey = envelope.getRoutingKey();
-                    String contentType = properties.getContentType();
                     long deliveryTag = envelope.getDeliveryTag();
 
                     String message = new String(body, StandardCharsets.UTF_8);
@@ -127,13 +123,11 @@ public class NewsParser implements Runnable {
                 }
             });
 
-        parsedDataChannel.basicConsume(parsedDataExchangeName, false, tag,
+        parsedDataChannel.basicConsume(settings.getParsedDataExchangeName(), false, settings.getTag(),
             new DefaultConsumer(parsedDataChannel) {
                 @Override
                 public void handleDelivery(String consumerTag, Envelope envelope,
                                            AMQP.BasicProperties properties, byte[] body) throws IOException {
-                    String routingKey = envelope.getRoutingKey();
-                    String contentType = properties.getContentType();
                     long deliveryTag = envelope.getDeliveryTag();
 
                     String message = new String(body, StandardCharsets.UTF_8);
@@ -146,16 +140,15 @@ public class NewsParser implements Runnable {
 
     private void create_connection() throws TimeoutException, IOException {
         ConnectionFactory factory = new ConnectionFactory();
-        factory.setUsername("rabbitmq");
-        factory.setPassword("rabbitmq");
-//        factory.setVirtualHost("/");
-        factory.setHost("127.0.0.1");
-        factory.setPort(5672);
+        factory.setUsername(settings.getRabbitName());
+        factory.setPassword(settings.getRabbitPassword());
+        factory.setHost(settings.getRabbitHost());
+        factory.setPort(settings.getRabbitPort());
         conn = factory.newConnection();
 
         linksChannel = conn.createChannel();
         linksChannel.queueDeclare(  // create queue
-                linksExchangeName,
+                settings.getLinksExchangeName(),
                 true,      // durable
                 false,        // exclusive
                 false,        // autoDelete
@@ -165,7 +158,7 @@ public class NewsParser implements Runnable {
 
         parsedDataChannel = conn.createChannel();
         parsedDataChannel.queueDeclare(  // create queue
-                parsedDataExchangeName,
+                settings.getParsedDataExchangeName(),
                 true,      // durable
                 false,        // exclusive
                 false,        // autoDelete
@@ -183,7 +176,7 @@ public class NewsParser implements Runnable {
 
     public void get_mes_count() {
         try {
-            AMQP.Queue.DeclareOk links_response = linksChannel.queueDeclarePassive(linksExchangeName);
+            AMQP.Queue.DeclareOk links_response = linksChannel.queueDeclarePassive(settings.getLinksExchangeName());
             settings.setMessageCount(links_response.getMessageCount());
             logger.info(links_response.getMessageCount() + " links was in Rabbit before start");
         } catch (IOException ex) {

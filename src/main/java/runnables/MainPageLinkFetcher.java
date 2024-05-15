@@ -18,13 +18,12 @@ import java.util.concurrent.TimeoutException;
 
 
 public class MainPageLinkFetcher implements Runnable{
+    private final Settings settings;
+    private final RequestUtils requestUtils;
 
-    private final String startUrl;
-    private Settings settings;
-
-    public MainPageLinkFetcher(String startUrl, Settings sett) {
-        this.startUrl = startUrl;
+    public MainPageLinkFetcher(Settings sett, RequestUtils reqUtil) {
         this.settings = sett;
+        this.requestUtils = reqUtil;
     }
     private static final Logger logger = LoggerFactory.getLogger(MainPageLinkFetcher.class);
 
@@ -32,7 +31,12 @@ public class MainPageLinkFetcher implements Runnable{
     public void run() {
         logger.info("Main page fetcher starts");
         try {
-            Document doc = RequestUtils.makeGetRequest(startUrl);
+            Document doc = requestUtils.makeGetRequest(settings.getURL());
+            if (doc == null) {
+                logger.error("CAN NOT GET MAIN PAGE REQUEST! Nothing was added to RabbitMQ! Url <" + settings.getURL()
+                        + ">");
+                return;
+            }
             parseMainLinkBody(doc);
         } catch (IOException | TimeoutException | NoSuchAlgorithmException e) {
             throw new RuntimeException(e);

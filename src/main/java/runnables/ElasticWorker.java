@@ -18,28 +18,26 @@ import org.elasticsearch.client.RestClient;
 import org.apache.http.HttpHost;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import utils.Settings;
 
 import java.io.IOException;
 
 public class ElasticWorker {
+    private final Settings settings;
     private final ElasticsearchClient EsClient;
-    private final String ElasticUrl = "http://localhost:9200";
-
     private RestClient EsRestClient;  // low-level client
     private ElasticsearchTransport EsTransport;
 
     private final String index_name;
     private static final Logger logger = LoggerFactory.getLogger(ElasticWorker.class);
 
-    public ElasticWorker(String name) {
-       index_name = name;
+    public ElasticWorker(Settings sett) {
+        settings = sett;
+        index_name = settings.getIndexName();
 
         // Create the low-level client
         EsRestClient = RestClient
-                .builder(HttpHost.create(ElasticUrl))
-//                .setDefaultHeaders(new Header[]{
-//                        new BasicHeader("Authorization", "ApiKey " + apiKey)
-//                })
+                .builder(HttpHost.create(settings.getElasticUrl()))
                 .build();
 
         ObjectMapper mapper = JsonMapper.builder()
@@ -56,10 +54,11 @@ public class ElasticWorker {
 
 
         if (index_exists.value()) {
-            logger.info("Index '" + index_name + "' already exists");
+//            logger.info("Index '" + index_name + "' already exists");
 //            EsClient.indices().delete(d -> d
 //                    .index(index_name)
 //            );
+//            System.exit(1);
             return;
         }
 
