@@ -1,3 +1,7 @@
+### Запуск docker контейнера
+
+```docker-compose -f docker-compose.yml up```
+
 
 ### Пакеты
 - ```elastic``` - 8.8.0

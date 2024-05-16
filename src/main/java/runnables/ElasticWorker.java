@@ -54,10 +54,8 @@ public class ElasticWorker {
 
 
         if (index_exists.value()) {
-//            logger.info("Index '" + index_name + "' already exists");
-//            EsClient.indices().delete(d -> d
-//                    .index(index_name)
-//            );
+            logger.info("Index '" + index_name + "' already exists");
+//            delete_index();
 //            System.exit(1);
             return;
         }
@@ -68,10 +66,15 @@ public class ElasticWorker {
                 .properties("header", p -> p.text(d -> d.fielddata(true)))
                 .properties("hash", p -> p.text(d -> d.fielddata(true)))
                 .properties("rubric", p -> p.text(d -> d.fielddata(true)))
-                .properties("time", p -> p.text(d -> d.fielddata(true)))
                 .properties("rubric_url", p -> p.text(d -> d.fielddata(true)))
+                .properties("time", p -> p.date(d -> d.format("strict_date_optional_time")))
         ));
         logger.info("Index '" + index_name + "' was created!");
+    }
+
+    public void delete_index() throws IOException {
+        EsClient.indices().delete(d -> d.index(index_name));
+        logger.info("Index '" + index_name + "' was deleted");
     }
 
     public void insert_data(NewsData data) {
@@ -109,4 +112,8 @@ public class ElasticWorker {
         }
         return response.hits().total().value() != 0;
     }
+
+
+
+
 }

@@ -11,10 +11,17 @@ import utils.RequestUtils;
 
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
+import java.time.LocalDate;
+import java.util.Date;
 import java.util.concurrent.TimeoutException;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import utils.Settings;
+
+import org.joda.time.DateTime;
+import org.joda.time.format.DateTimeFormat;
+import org.joda.time.format.DateTimeFormatter;
+import org.joda.time.format.ISODateTimeFormat;
 
 public class NewsParser implements Runnable {
     private Channel linksChannel;
@@ -89,7 +96,19 @@ public class NewsParser implements Runnable {
         newsData.setRubric(rubrics.select("a").text());
         newsData.setRubric_url(settings.getURL() + rubrics.select("a").attr("href"));
 
-        newsData.setTime(rubrics.select("p").text());
+        String current_date = LocalDate.now().toString();
+        String current_time = rubrics.select("p").text();
+        String str_date_time = current_date + " " + current_time;
+
+        DateTimeFormatter dateTimeFormatter
+                = DateTimeFormat.forPattern("yyyy-MM-dd HH:mm");
+        DateTime parsedDateTimeUsingFormatter
+                = DateTime.parse(str_date_time, dateTimeFormatter);
+
+        DateTimeFormatter formatter = ISODateTimeFormat.dateTime();
+        String iso_date_time = formatter.print(parsedDateTimeUsingFormatter);
+
+        newsData.setTime(iso_date_time);
 
         Element body_div = doc.selectFirst("div.b-material-body");
         Elements paragraphs = body_div.select("p:not([class])");
