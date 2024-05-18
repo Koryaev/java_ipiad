@@ -2,10 +2,14 @@ package runnables;
 
 import co.elastic.clients.elasticsearch.ElasticsearchClient;
 import co.elastic.clients.elasticsearch._types.ElasticsearchException;
+import co.elastic.clients.elasticsearch._types.aggregations.Aggregation;
+import co.elastic.clients.elasticsearch._types.aggregations.CalendarInterval;
+import co.elastic.clients.elasticsearch._types.aggregations.FieldDateMath;
 import co.elastic.clients.elasticsearch._types.query_dsl.MatchQuery;
 import co.elastic.clients.elasticsearch._types.query_dsl.Query;
 import co.elastic.clients.elasticsearch._types.query_dsl.MatchPhrasePrefixQuery;
 import co.elastic.clients.elasticsearch.core.IndexResponse;
+import co.elastic.clients.elasticsearch.core.MgetResponse;
 import co.elastic.clients.elasticsearch.core.SearchResponse;
 import co.elastic.clients.elasticsearch.core.search.Hit;
 import co.elastic.clients.json.jackson.JacksonJsonpMapper;
@@ -25,6 +29,7 @@ import org.slf4j.LoggerFactory;
 import utils.Settings;
 
 import java.io.IOException;
+import java.util.ArrayList;
 import java.util.List;
 
 public class ElasticWorker {
@@ -119,7 +124,7 @@ public class ElasticWorker {
     }
 
 
-    public void customSearch() throws IOException {
+    public void customSearch() throws IOException, ElasticsearchException {
         logger.info("Start custom search!");
 
         Query rubricMatch = MatchQuery.of(m -> m
@@ -138,12 +143,157 @@ public class ElasticWorker {
                         .index(index_name)
                         .query(q -> q
                                 .bool(b -> b
-                                        .must(rubricMatch, titlePrefixMatch)//, byHeaderSevastopolMatch)
+                                        .must(rubricMatch, titlePrefixMatch)
                                 )
                         ),
                 NewsData.class
         );
         printQuery(andResponse, "AND");
+
+        // OR
+        SearchResponse<NewsData> orResponse = EsClient.search(s -> s
+                        .index(index_name)
+                        .query(q -> q
+                                .bool(b -> b
+                                        .should(rubricMatch, titlePrefixMatch)
+                                )
+                        ),
+                NewsData.class
+        );
+        printQuery(orResponse, "OR");
+
+        // SCRIPT
+        SearchResponse<NewsData> scriptResponse = EsClient.search(s -> s
+                        .index(index_name)
+                        .query(q -> q
+                                .scriptScore(ss -> ss
+                                        .query(q1 -> q1
+                                                .matchAll(ma -> ma))
+                                        .script(scr -> scr
+                                                .inline(i -> i
+                                                        .source("doc['url'].value.length()"))))),
+                NewsData.class
+        );
+        printQuery(scriptResponse, "SCRIPT");
+
+        // MULTIGET
+        MgetResponse<NewsData> mgetResponse = EsClient.mget(mgq -> mgq
+                        .index(index_name)
+                        .docs(d -> d
+                                .id("RP8fgY8Bkzx9pZDdU8U_")
+                                .id("QP8fgY8Bkzx9pZDdTsV2")
+                                .id("DrUliI8BUNlL19jmXjWl")),
+
+                NewsData.class
+        );
+        List<NewsData> mgetHits = new ArrayList<>();
+        System.out.println(mgetResponse.toString());
+        mgetHits.add(mgetResponse.docs().getFirst().result().source());
+        logger.info("Search results for <MULTIGET>");
+        for (NewsData newsData: mgetHits) {
+            assert newsData != null;
+            logger.debug(newsData.toString());
+        }
+        System.out.println();
+
+        // Date Histogram Aggregation
+        Aggregation aggregation1 = Aggregation.of(a -> a
+                .dateHistogram(dha -> dha
+                        .field("time")
+                        .calendarInterval(CalendarInterval.valueOf(String.valueOf(CalendarInterval.Day)))
+                )
+        );
+        SearchResponse<?> dhAggregation = EsClient.search(s -> s
+                        .index(index_name)
+                        .aggregations("articles_per_day", aggregation1),
+                NewsData.class
+        );
+        logger.info("Date Histogram Aggregation");
+        logger.debug(dhAggregation.toString());
+
+        // Date Range Aggregation
+        Aggregation aggregation2 = Aggregation.of(a -> a.dateRange(dha -> dha.field("time")
+                .ranges(dr -> dr
+                        .from(FieldDateMath.of(fdm -> fdm.expr("2024-01-01")))
+                        .to(FieldDateMath.of(fdm -> fdm.expr("2024-06-01"))))));
+        SearchResponse<?> drAggregation = EsClient.search(s -> s
+                        .index(index_name)
+                        .aggregations("articles_in_range", aggregation2),
+                NewsData.class
+        );
+        logger.info("Date Range Aggregation");
+        logger.debug(drAggregation.toString());
+
+        // Histogram Aggregation
+        Aggregation aggregation3 = Aggregation.of(a -> a.histogram(dha -> dha.script(scr -> scr
+                        .inline(i -> i
+                                .source("doc['url'].value.length()")
+                                .lang("painless"))
+                ).interval(10.0)
+        ));
+        SearchResponse<?> hAggregation = EsClient.search(s -> s
+                        .index(index_name)
+                        .aggregations("url_length_histogram", aggregation3),
+                NewsData.class
+        );
+        logger.info("Histogram Aggregation");
+        logger.debug(hAggregation.toString());
+
+
+        // Terms Aggregation
+        Aggregation aggregation4 = Aggregation.of(a -> a.terms(t -> t
+                        .field("rubric")
+                )
+        );
+        SearchResponse<?> tAggregation = EsClient.search(s -> s
+                        .index(index_name)
+                        .aggregations("popular_rubric", aggregation4),
+                NewsData.class
+        );
+        logger.info("Terms Aggregation");
+        logger.debug(tAggregation.toString());
+
+
+        // Filter Aggregation
+        Aggregation aggregation5 = Aggregation.of(a -> a
+                .avg(avg -> avg
+                        .script(scr -> scr
+                                .inline(i -> i
+                                        .source("doc['rubric'].value.length()")
+                                        .lang("painless"))
+                        )
+                )
+        );
+        Aggregation aggregation6 = Aggregation.of(a -> a
+                .filter(q -> q.term(t -> t
+                                .field("rubric")
+                                .value("Общество")
+                        )
+                )
+                .aggregations("avg_rubric_length", aggregation5)
+        );
+        SearchResponse<?> fAggregation = EsClient.search(s -> s
+                        .index(index_name)
+                        .aggregations("filtered_rubric", aggregation6),
+                NewsData.class
+        );
+        logger.info("Filter Aggregation");
+        logger.debug(fAggregation.toString());
+
+        // Logs Aggregation
+        Aggregation aggregation7 = Aggregation.of(a -> a.terms(t -> t
+                        .field("stream.keyword")
+                        .size(10)
+                )
+        );
+        SearchResponse<?> lAggregation = EsClient.search(s -> s
+                        .index("logs-generic-default")
+                        .aggregations("streams", aggregation7)
+                        .size(0),
+                NewsData.class
+        );
+        logger.info("Logs Aggregation");
+        logger.debug(lAggregation.toString());
     }
 
     public void printQuery(SearchResponse<NewsData> response, String responseType) {
@@ -153,6 +303,8 @@ public class ElasticWorker {
             logger.warn("Empty " + responseType + " response");
             return;
         }
+
+        logger.info("Search results for <" + responseType + ">");
 
         for (Hit<NewsData> hit: hits) {
             NewsData newsData = hit.source();

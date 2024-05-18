@@ -30,9 +30,6 @@ public class Main {
     public void start() throws IOException, TimeoutException, InterruptedException {
         ElasticWorker Elastic = new ElasticWorker(settings);
         Elastic.createIndex();
-//
-//        Elastic.customSearch();
-//        System.exit(0);
 
         NewsParser news_parser_first = new NewsParser(Elastic, settings, requestUtils);
         NewsParser news_parser_second = new NewsParser(Elastic, settings, requestUtils);
@@ -66,6 +63,13 @@ public class Main {
             } else {
                 news_parser_first.finish();
                 news_parser_second.finish();
+
+                Scanner in = new Scanner(System.in);
+                System.out.print("Print 2 to run search query with Aggregation, other to exit: ");
+                String input = in.nextLine();
+                if (Objects.equals(input, "2")) {
+                    Elastic.customSearch();
+                }
                 System.exit(0);
             }
         }
