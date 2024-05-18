@@ -2,8 +2,12 @@ package runnables;
 
 import co.elastic.clients.elasticsearch.ElasticsearchClient;
 import co.elastic.clients.elasticsearch._types.ElasticsearchException;
+import co.elastic.clients.elasticsearch._types.query_dsl.MatchQuery;
+import co.elastic.clients.elasticsearch._types.query_dsl.Query;
+import co.elastic.clients.elasticsearch._types.query_dsl.MatchPhrasePrefixQuery;
 import co.elastic.clients.elasticsearch.core.IndexResponse;
 import co.elastic.clients.elasticsearch.core.SearchResponse;
+import co.elastic.clients.elasticsearch.core.search.Hit;
 import co.elastic.clients.json.jackson.JacksonJsonpMapper;
 import co.elastic.clients.transport.ElasticsearchTransport;
 import co.elastic.clients.transport.endpoints.BooleanResponse;
@@ -21,6 +25,7 @@ import org.slf4j.LoggerFactory;
 import utils.Settings;
 
 import java.io.IOException;
+import java.util.List;
 
 public class ElasticWorker {
     private final Settings settings;
@@ -114,6 +119,45 @@ public class ElasticWorker {
     }
 
 
+    public void customSearch() throws IOException {
+        logger.info("Start custom search!");
+
+        Query rubricMatch = MatchQuery.of(m -> m
+                .field("rubric")
+                .query("происшествия")
+        )._toQuery();
+
+        Query titlePrefixMatch = MatchPhrasePrefixQuery.of(m -> m
+                .field("title")
+                .query("Суд")
+        )._toQuery();
 
 
+        // AND
+        SearchResponse<NewsData> andResponse = EsClient.search(s -> s
+                        .index(index_name)
+                        .query(q -> q
+                                .bool(b -> b
+                                        .must(rubricMatch, titlePrefixMatch)//, byHeaderSevastopolMatch)
+                                )
+                        ),
+                NewsData.class
+        );
+        printQuery(andResponse, "AND");
+    }
+
+    public void printQuery(SearchResponse<NewsData> response, String responseType) {
+        List<Hit<NewsData>> hits = response.hits().hits();
+
+        if (hits.isEmpty()) {
+            logger.warn("Empty " + responseType + " response");
+            return;
+        }
+
+        for (Hit<NewsData> hit: hits) {
+            NewsData newsData = hit.source();
+            assert newsData != null;
+            logger.debug(newsData.toString());
+        }
+    }
 }

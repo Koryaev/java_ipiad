@@ -30,6 +30,9 @@ public class Main {
     public void start() throws IOException, TimeoutException, InterruptedException {
         ElasticWorker Elastic = new ElasticWorker(settings);
         Elastic.createIndex();
+//
+//        Elastic.customSearch();
+//        System.exit(0);
 
         NewsParser news_parser_first = new NewsParser(Elastic, settings, requestUtils);
         NewsParser news_parser_second = new NewsParser(Elastic, settings, requestUtils);

@@ -26,6 +26,9 @@ services:
     environment:
       - xpack.security.enabled=false
       - discovery.type=single-node
+      - XPACK_SECURITY_ENABLED=false
+      - XPACK_REPORTING_ENABLED=false
+      - XPACK_MONITORING_ENABLED=false
     ulimits:
       memlock:
         soft: -1
@@ -40,6 +43,8 @@ services:
     ports:
       - "9200:9200"
       - "9300:9300"
+    networks:
+      - elk
 
   kibana:
     container_name: kibana
@@ -52,3 +57,33 @@ services:
       - "5601:5601"
     depends_on:
       - elasticsearch
+    networks:
+      - elk
+
+  filebeat:
+    container_name: filebeat
+    image: elastic/filebeat:8.8.0
+    volumes:
+      - ./filebeat/filebeat.yml:/usr/share/filebeat/filebeat.yml
+      - ./log:/var/lib/docker/containers/website-parser
+    depends_on:
+      - elasticsearch
+      - logstash
+    networks:
+      - elk
+
+  logstash:
+    container_name: logstash
+    image: logstash:8.8.0
+    volumes:
+      - ./logstash/config:/usr/share/logstash/config
+      - ./logstash/pipeline:/usr/share/logstash/pipeline
+    ports:
+      - "5044:5044"
+    depends_on:
+      - elasticsearch
+    networks:
+      - elk
+
+networks:
+  elk:
