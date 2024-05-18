@@ -16,15 +16,11 @@
 - ```logstash``` - 8.8.0
 - ```filebeat``` - 8.8.0
 
----
-
 ## Принцип работы
 
 - Сначала подключается Elastic и создает/проверяет наличие индекса
 - Запускаются два потока с NewsParser, обрабатывающие очереди в RabbitMQ и в случае нахождения в очереди ссылок обрабатывают их до начала работы Main Page Linker. Работают до выхода из программы
 - В бесконечном цикле пользователь опрашивается о необходимости парсинга главной страницы (Main page linker). В случае отказа, все потоки, кроме основного завершаются и предлагается выполнить блок запросов с агрегацией
-
----
 
 ## Архитектура проекта
 
@@ -40,12 +36,23 @@
   - UrlData - датакласс для работы с ссылками
 - ```resources``` - настройка логгера
 
----
-
 ## Пример работы
+
+#### Fetcher
+
+![news](./images/news.png "logs")
+
+![news_dashboard](./images/news_dashboard.png "logs")
 
 #### Logstash + filebeat
 
-![logs](./images/logs.png "logs")
+![logs](./images/logs.png "Logstash")
 
-![logs_dashboard](./images/logs_dashboard.png "logs")
+![logs_dashboard](./images/logs_dashboard.png "Logstash")
+
+#### RabbitMQ
+**_producerLinks_**
+![producerLinks](./images/producerLinks.png "RabbitMQ")
+
+**_parsedData_**
+![parsedData](./images/parsedData.png "RabbitMQ")
